@@ -1,9 +1,13 @@
 import socket
 import os
+import threading
 from datetime import datetime
 
-HOST = "0.0.0.0"
-PORT = 8000
+TCP_HOST = "0.0.0.0"
+TCP_PORT = 8000
+
+UDP_HOST = "0.0.0.0"
+UDP_PORT = 9000
 
 
 def build_response(status_code, status_text, body, content_type="text/html"):
@@ -20,18 +24,20 @@ def build_response(status_code, status_text, body, content_type="text/html"):
     return response
 
 
-def handle_request(request_data, client_address):
+def handle_http_request(request_data, client_address):
     try:
         request_text = request_data.decode("utf-8", errors="ignore")
-        request_line = request_text.splitlines()[0]
 
+        if not request_text:
+            return build_response(400, "Bad Request", "<h1>400 Bad Request</h1>")
+
+        request_line = request_text.splitlines()[0]
         print(f"[{datetime.now()}] Request dari Proxy {client_address}: {request_line}")
 
         parts = request_line.split()
 
         if len(parts) < 2 or parts[0] != "GET":
-            body = "<h1>400 Bad Request</h1>"
-            return build_response(400, "Bad Request", body)
+            return build_response(400, "Bad Request", "<h1>400 Bad Request</h1>")
 
         path = parts[1]
 
@@ -53,26 +59,71 @@ def handle_request(request_data, client_address):
 
     except Exception as e:
         print(f"[ERROR] {e}")
-        body = "<h1>500 Internal Server Error</h1>"
-        return build_response(500, "Internal Server Error", body)
+        return build_response(500, "Internal Server Error", "<h1>500 Internal Server Error</h1>")
 
 
-def start_server():
-    server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    server_socket.bind((HOST, PORT))
-    server_socket.listen(5)
+def handle_tcp_client(connection_socket, client_address):
+    thread_name = threading.current_thread().name
+    print(f"[THREAD TCP] {thread_name} menangani koneksi dari {client_address}")
 
-    print(f"Web Server running on port {PORT}")
+    try:
+        request_data = connection_socket.recv(4096)
+        response = handle_http_request(request_data, client_address)
+        connection_socket.sendall(response)
+
+    except Exception as e:
+        print(f"[ERROR TCP] {e}")
+
+    finally:
+        connection_socket.close()
+        print(f"[THREAD TCP] {thread_name} selesai menangani {client_address}")
+
+
+def start_tcp_server():
+    tcp_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    tcp_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    tcp_socket.bind((TCP_HOST, TCP_PORT))
+    tcp_socket.listen(10)
+
+    print(f"Web Server TCP running on port {TCP_PORT}")
 
     while True:
-        connection_socket, client_address = server_socket.accept()
-        request_data = connection_socket.recv(4096)
+        connection_socket, client_address = tcp_socket.accept()
 
-        response = handle_request(request_data, client_address)
+        client_thread = threading.Thread(
+            target=handle_tcp_client,
+            args=(connection_socket, client_address)
+        )
 
-        connection_socket.sendall(response)
-        connection_socket.close()
+        client_thread.start()
+
+
+def start_udp_server():
+    udp_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    udp_socket.bind((UDP_HOST, UDP_PORT))
+
+    print(f"UDP Server for QoS traffic running on port {UDP_PORT}")
+
+    while True:
+        try:
+            data, client_address = udp_socket.recvfrom(4096)
+            message = data.decode("utf-8", errors="ignore")
+
+            print(f"[UDP] Received from {client_address}: {message}")
+
+            # Echo balik ke client agar packet request dan reply bisa terlihat di Wireshark
+            udp_socket.sendto(data, client_address)
+
+        except Exception as e:
+            print(f"[ERROR UDP] {e}")
 
 
 if __name__ == "__main__":
-    start_server()
+    tcp_thread = threading.Thread(target=start_tcp_server)
+    udp_thread = threading.Thread(target=start_udp_server)
+
+    tcp_thread.start()
+    udp_thread.start()
+
+    tcp_thread.join()
+    udp_thread.join()

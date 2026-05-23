@@ -1,6 +1,7 @@
 import socket
 from datetime import datetime
 import time
+import threading
 
 PROXY_HOST = "0.0.0.0"
 PROXY_PORT = 8080
@@ -9,6 +10,7 @@ WEB_SERVER_HOST = "127.0.0.1"
 WEB_SERVER_PORT = 8000
 
 cache = {}
+cache_lock = threading.Lock()
 
 
 def build_error_response(status_code, status_text, body):
@@ -42,6 +44,7 @@ def get_path_from_request(request_data):
 
 def forward_to_webserver(request_data):
     web_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    web_socket.settimeout(5)
 
     try:
         web_socket.connect((WEB_SERVER_HOST, WEB_SERVER_PORT))
@@ -64,6 +67,13 @@ def forward_to_webserver(request_data):
             "<h1>502 Bad Gateway</h1><p>Web Server tidak berjalan.</p>"
         )
 
+    except socket.timeout:
+        return build_error_response(
+            504,
+            "Gateway Timeout",
+            "<h1>504 Gateway Timeout</h1><p>Web Server tidak merespons.</p>"
+        )
+
     except Exception as e:
         return build_error_response(
             504,
@@ -75,43 +85,45 @@ def forward_to_webserver(request_data):
         web_socket.close()
 
 
-def start_proxy():
-    proxy_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    proxy_socket.bind((PROXY_HOST, PROXY_PORT))
-    proxy_socket.listen(5)
+def handle_client(client_socket, client_address):
+    thread_name = threading.current_thread().name
+    start_time = time.time()
 
-    print(f"Proxy listening on port {PROXY_PORT}")
+    print(f"\n[THREAD] {thread_name} menangani Client {client_address}")
 
-    while True:
-        client_socket, client_address = proxy_socket.accept()
-        start_time = time.time()
-
+    try:
         request_data = client_socket.recv(4096)
         request_text = request_data.decode("utf-8", errors="ignore")
 
         if not request_text:
-            client_socket.close()
-            continue
+            return
 
         request_line = request_text.splitlines()[0]
         path = get_path_from_request(request_data)
 
-        print(f"\n[{datetime.now()}] Request dari Client {client_address}: {request_line}")
+        print(f"[{datetime.now()}] Request dari Client {client_address}: {request_line}")
 
-        if path in cache:
-            response = cache[path]
-            cache_status = "HIT"
-            print(f"[CACHE] HIT untuk {path}")
-            print("[INFO] Response dikirim dari cache proxy")
-        else:
+        response = None
+        cache_status = "MISS"
+
+        with cache_lock:
+            if path in cache:
+                response = cache[path]
+                cache_status = "HIT"
+                print(f"[CACHE] HIT untuk {path}")
+                print("[INFO] Response dikirim dari cache proxy")
+
+        if response is None:
             response = forward_to_webserver(request_data)
-            cache[path] = response
+
+            with cache_lock:
+                cache[path] = response
+
             cache_status = "MISS"
             print(f"[CACHE] MISS untuk {path}")
             print(f"[CACHE] Response disimpan ke cache untuk {path}")
 
         client_socket.sendall(response)
-        client_socket.close()
 
         end_time = time.time()
         response_time = (end_time - start_time) * 1000
@@ -120,8 +132,36 @@ def start_proxy():
             f"[LOG] Client={client_address[0]} | "
             f"Path={path} | "
             f"Cache={cache_status} | "
+            f"Thread={thread_name} | "
             f"Time={response_time:.2f} ms"
         )
+
+    except Exception as e:
+        print(f"[ERROR THREAD] {e}")
+
+    finally:
+        client_socket.close()
+        print(f"[THREAD] {thread_name} selesai menangani Client {client_address}")
+
+
+def start_proxy():
+    proxy_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    proxy_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    proxy_socket.bind((PROXY_HOST, PROXY_PORT))
+    proxy_socket.listen(10)
+
+    print(f"Proxy listening on port {PROXY_PORT}")
+    print("Proxy mendukung forwarding, caching, dan multithreading")
+
+    while True:
+        client_socket, client_address = proxy_socket.accept()
+
+        client_thread = threading.Thread(
+            target=handle_client,
+            args=(client_socket, client_address)
+        )
+
+        client_thread.start()
 
 
 if __name__ == "__main__":
