@@ -32,11 +32,16 @@ def handle_http_request(request_data, client_address):
             return build_response(400, "Bad Request", "<h1>400 Bad Request</h1>")
 
         request_line = request_text.splitlines()[0]
-        print(f"[{datetime.now()}] Request dari Proxy {client_address}: {request_line}")
-
         parts = request_line.split()
 
+        print()
+        print("[HTTP REQUEST]")
+        print(f"Time        : {datetime.now()}")
+        print(f"From Proxy  : {client_address[0]}:{client_address[1]}")
+        print(f"Request     : {request_line}")
+
         if len(parts) < 2 or parts[0] != "GET":
+            print("[STATUS] 400 Bad Request")
             return build_response(400, "Bad Request", "<h1>400 Bad Request</h1>")
 
         path = parts[1]
@@ -46,25 +51,47 @@ def handle_http_request(request_data, client_address):
 
         filename = path.lstrip("/")
 
+        print(f"Path        : {path}")
+        print(f"File        : {filename}")
+
         if not os.path.exists(filename):
             body = f"<h1>404 Not Found</h1><p>File {filename} tidak ditemukan.</p>"
-            print(f"[LOG] {client_address} | {path} | 404")
+
+            print()
+            print("[RESULT]")
+            print("Status Code : 404 Not Found")
+            print("Message     : File tidak ditemukan")
+
             return build_response(404, "Not Found", body)
 
         with open(filename, "r", encoding="utf-8") as file:
             body = file.read()
 
-        print(f"[LOG] {client_address} | {path} | 200")
+        print()
+        print("[RESULT]")
+        print("Status Code : 200 OK")
+        print("Message     : File berhasil dikirim")
+
         return build_response(200, "OK", body)
 
     except Exception as e:
-        print(f"[ERROR] {e}")
-        return build_response(500, "Internal Server Error", "<h1>500 Internal Server Error</h1>")
+        print()
+        print("[ERROR]")
+        print(f"Message     : {e}")
+
+        return build_response(
+            500,
+            "Internal Server Error",
+            "<h1>500 Internal Server Error</h1>"
+        )
 
 
 def handle_tcp_client(connection_socket, client_address):
     thread_name = threading.current_thread().name
-    print(f"[THREAD TCP] {thread_name} menangani koneksi dari {client_address}")
+
+    print("\n" + "=" * 60)
+    print(f"[TCP THREAD] {thread_name} menangani koneksi")
+    print(f"[SOURCE] {client_address[0]}:{client_address[1]}")
 
     try:
         request_data = connection_socket.recv(4096)
@@ -72,11 +99,15 @@ def handle_tcp_client(connection_socket, client_address):
         connection_socket.sendall(response)
 
     except Exception as e:
-        print(f"[ERROR TCP] {e}")
+        print()
+        print("[ERROR TCP]")
+        print(f"Message     : {e}")
 
     finally:
         connection_socket.close()
-        print(f"[THREAD TCP] {thread_name} selesai menangani {client_address}")
+        print()
+        print(f"[TCP THREAD] {thread_name} selesai menangani koneksi")
+        print("=" * 60 + "\n")
 
 
 def start_tcp_server():
@@ -85,7 +116,13 @@ def start_tcp_server():
     tcp_socket.bind((TCP_HOST, TCP_PORT))
     tcp_socket.listen(10)
 
-    print(f"Web Server TCP running on port {TCP_PORT}")
+    print("\n" + "=" * 60)
+    print("WEB SERVER TCP STARTED")
+    print("=" * 60)
+    print(f"Host : {TCP_HOST}")
+    print(f"Port : {TCP_PORT}")
+    print("Mode : HTTP Response, 404 Handling, Multithreading")
+    print("=" * 60 + "\n")
 
     while True:
         connection_socket, client_address = tcp_socket.accept()
@@ -102,20 +139,33 @@ def start_udp_server():
     udp_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     udp_socket.bind((UDP_HOST, UDP_PORT))
 
-    print(f"UDP Server for QoS traffic running on port {UDP_PORT}")
+    print("\n" + "=" * 60)
+    print("UDP SERVER FOR QOS STARTED")
+    print("=" * 60)
+    print(f"Host : {UDP_HOST}")
+    print(f"Port : {UDP_PORT}")
+    print("Mode : UDP Echo Traffic for Wireshark QoS Analysis")
+    print("=" * 60 + "\n")
 
     while True:
         try:
             data, client_address = udp_socket.recvfrom(4096)
             message = data.decode("utf-8", errors="ignore")
 
-            print(f"[UDP] Received from {client_address}: {message}")
+            print("\n" + "-" * 60)
+            print("[UDP PACKET RECEIVED]")
+            print(f"Time       : {datetime.now()}")
+            print(f"From       : {client_address[0]}:{client_address[1]}")
+            print(f"Message    : {message}")
+            print("[UDP] Echo dikirim kembali ke client")
+            print("-" * 60 + "\n")
 
-            # Echo balik ke client agar packet request dan reply bisa terlihat di Wireshark
             udp_socket.sendto(data, client_address)
 
         except Exception as e:
-            print(f"[ERROR UDP] {e}")
+            print()
+            print("[ERROR UDP]")
+            print(f"Message    : {e}")
 
 
 if __name__ == "__main__":

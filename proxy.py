@@ -89,19 +89,26 @@ def handle_client(client_socket, client_address):
     thread_name = threading.current_thread().name
     start_time = time.time()
 
-    print(f"\n[THREAD] {thread_name} menangani Client {client_address}")
+    print("\n" + "=" * 60)
+    print(f"[THREAD] {thread_name} menangani client")
+    print(f"[CLIENT] Address : {client_address[0]}")
+    print(f"[CLIENT] Port    : {client_address[1]}")
 
     try:
         request_data = client_socket.recv(4096)
         request_text = request_data.decode("utf-8", errors="ignore")
 
         if not request_text:
+            print("[INFO] Request kosong, koneksi ditutup.")
             return
 
         request_line = request_text.splitlines()[0]
         path = get_path_from_request(request_data)
 
-        print(f"[{datetime.now()}] Request dari Client {client_address}: {request_line}")
+        print()
+        print(f"[TIME] {datetime.now()}")
+        print(f"[REQUEST] {request_line}")
+        print(f"[PATH] {path}")
 
         response = None
         cache_status = "MISS"
@@ -110,8 +117,11 @@ def handle_client(client_socket, client_address):
             if path in cache:
                 response = cache[path]
                 cache_status = "HIT"
-                print(f"[CACHE] HIT untuk {path}")
-                print("[INFO] Response dikirim dari cache proxy")
+
+                print()
+                print(f"[CACHE] Status : HIT")
+                print(f"[CACHE] Path   : {path}")
+                print("[INFO] Response dikirim dari cache proxy.")
 
         if response is None:
             response = forward_to_webserver(request_data)
@@ -120,28 +130,35 @@ def handle_client(client_socket, client_address):
                 cache[path] = response
 
             cache_status = "MISS"
-            print(f"[CACHE] MISS untuk {path}")
-            print(f"[CACHE] Response disimpan ke cache untuk {path}")
+
+            print()
+            print(f"[CACHE] Status : MISS")
+            print(f"[CACHE] Path   : {path}")
+            print("[INFO] Request diteruskan ke web server.")
+            print("[INFO] Response disimpan ke cache proxy.")
 
         client_socket.sendall(response)
 
         end_time = time.time()
         response_time = (end_time - start_time) * 1000
 
-        print(
-            f"[LOG] Client={client_address[0]} | "
-            f"Path={path} | "
-            f"Cache={cache_status} | "
-            f"Thread={thread_name} | "
-            f"Time={response_time:.2f} ms"
-        )
+        print()
+        print("[RESULT]")
+        print(f"Client IP     : {client_address[0]}")
+        print(f"Path          : {path}")
+        print(f"Cache Status  : {cache_status}")
+        print(f"Thread        : {thread_name}")
+        print(f"Response Time : {response_time:.2f} ms")
 
     except Exception as e:
+        print()
         print(f"[ERROR THREAD] {e}")
 
     finally:
         client_socket.close()
-        print(f"[THREAD] {thread_name} selesai menangani Client {client_address}")
+        print()
+        print(f"[THREAD] {thread_name} selesai menangani client.")
+        print("=" * 60 + "\n")
 
 
 def start_proxy():
@@ -150,8 +167,13 @@ def start_proxy():
     proxy_socket.bind((PROXY_HOST, PROXY_PORT))
     proxy_socket.listen(10)
 
-    print(f"Proxy listening on port {PROXY_PORT}")
-    print("Proxy mendukung forwarding, caching, dan multithreading")
+    print("\n" + "=" * 60)
+    print("PROXY SERVER STARTED")
+    print("=" * 60)
+    print(f"Host : {PROXY_HOST}")
+    print(f"Port : {PROXY_PORT}")
+    print("Mode : Forwarding, Caching, Multithreading")
+    print("=" * 60 + "\n")
 
     while True:
         client_socket, client_address = proxy_socket.accept()
