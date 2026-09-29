@@ -14,7 +14,7 @@ Tugas Besar Mata Kuliah Jaringan Komputer. Proyek ini mendemonstrasikan cara ker
 - `client.py` : Script Client berbasis Command-Line (CLI).
 - `client_gui.py` : Antarmuka GUI yang *user-friendly* untuk Client.
 - `dashboard_gui.py` : Dashboard sentral pengontrol server dan proxy.
-- `HTML/`, `css/`, `assets/`, `status/` : Folder berisi aset-aset web statis (`.html`, `.css`, gambar, dan halaman error code 404/500/502/504).
+- `*.html`, `css/`, `assets/`, `status/` : File dan folder berisi aset-aset web statis (HTML, CSS, gambar, dan halaman error code 404/500/502/504).
 
 ## 🚀 Cara Menjalankan
 
